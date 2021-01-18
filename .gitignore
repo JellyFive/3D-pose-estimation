@@ -32,6 +32,10 @@ ssd-6d
 weights/
 model/
 runs/
+contrast_experiment/runs/
+contrast_experiment/weights/
+.gitignore
+.gitattributes
 MANIFEST
 
 # PyInstaller

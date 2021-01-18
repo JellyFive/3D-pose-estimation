@@ -1,5 +1,7 @@
 from torch_lib.dataset_posenet import *
-from torch_lib.posenet import Model, OrientationLoss, FocalLoss
+from torch_lib.posenet import Model, OrientationLoss
+from torch_lib.mobilenetv3_old import MobileNetV3_Large
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -13,12 +15,22 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+# 获取mobilenetv_3的预训练模型参数。去掉'module'
+def model_dict():
+        model = torch.load("/home/lab/Desktop/wzndeep/posenet-build--eular/torch_lib/mbv3_large.old.pth.tar", map_location='cpu')
+        weight = model["state_dict"]
+        new_state_dict = OrderedDict()
+        for k,v in weight.items():
+            name = k[7:]
+            new_state_dict[name] = v
+        return new_state_dict
+
 
 def main():
 
     # hyper parameters
     epochs = 200
-    batch_size = 8
+    batch_size = 16
     w = 1
     alpha = 1
 
@@ -32,6 +44,10 @@ def main():
     generator = data.DataLoader(dataset, **params)  # 读取Dataset中的数据
 
     base_model = mobilenet.mobilenet_v2(pretrained=True)  # 加载模型并设置为预训练模式
+    # base_model = MobileNetV3_Large()
+    # state_dict = model_dict()
+    # base_model.load_state_dict(state_dict)
+
     model = Model(features=base_model).cuda()
 
     opt_SGD = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)

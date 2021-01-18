@@ -206,13 +206,13 @@ class Dataset(data.Dataset):
         # bring the KITTI center up to the middle of the object
         # Location[1] -= Dimension[0] / 2
 
-        Rotation = np.array([line[14], line[15], line[16]], dtype=np.double)
-        # Qu = self.eulerAnglesToQu(Rotation)
+        Rotation = [Patch, Yaw, Roll]
+        Qu = self.eulerAnglesToQu(Rotation)
 
         # patch
         Orientation_patch = np.zeros((self.bins, 2))
         Confidence_patch = np.zeros(self.bins)
-        # raw
+        # yaw
         Orientation_yaw = np.zeros((self.bins, 2))
         Confidence_yaw = np.zeros(self.bins)
 
@@ -253,6 +253,7 @@ class Dataset(data.Dataset):
             'Confidence_patch': Confidence_patch,
             'Orientation_yaw': Orientation_yaw,
             'Confidence_yaw': Confidence_yaw,
+            'Qu':Qu
         }
 
         return label
@@ -300,6 +301,9 @@ class Dataset(data.Dataset):
                 # bring the KITTI center up to the middle of the object
                 # Location[1] -= Dimension[0] / 2
 
+                Rotation = [Patch, Yaw, Roll]
+                Qu = self.eulerAnglesToQu(Rotation)
+
                 buf.append({
                     'Class': Class,
                     'Box_2D': Box_2D,
@@ -308,7 +312,8 @@ class Dataset(data.Dataset):
                     'Alpha': Alpha,
                     'Yaw': Yaw,
                     'Patch': Patch,
-                    'Roll': Roll
+                    'Roll': Roll,
+                    'Qu':Qu
                 })
         return buf
 
