@@ -30,7 +30,7 @@ def main():
 
     # hyper parameters
     epochs = 200
-    batch_size = 16
+    batch_size = 8
     w = 1
     alpha = 1
 
@@ -50,7 +50,12 @@ def main():
 
     model = Model(features=base_model).cuda()
 
+    # 选择不同的优化方法
+    opt_Momentum = torch.optim.SGD(model.parameters(), lr = 0.0001, momentum = 0.9)
+    opt_RMSprop = torch.optim.RMSprop(model.parameters(), lr = 0.0001, alpha = 0.9)
+    opt_Adam = torch.optim.Adam(model.parameters(), lr = 0.0001, betas= (0.9, 0.99))
     opt_SGD = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
+
     conf_loss_func = nn.CrossEntropyLoss().cuda()
     orient_loss_func = OrientationLoss
 
@@ -124,9 +129,9 @@ def main():
 
             total_loss = alpha * loss_patch + loss_yaw
 
-            opt_SGD.zero_grad()  # 梯度置0
+            opt_RMSprop.zero_grad()  # 梯度置0
             total_loss.backward()  # 反向传播
-            opt_SGD.step()  # 优化
+            opt_RMSprop.step()  # 优化
 
             if passes % 10 == 0:  # 10轮显示一次，打印状态信息
                 print(

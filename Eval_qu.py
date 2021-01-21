@@ -4,12 +4,10 @@ but will still use the neural nets to get the 3D position and plot onto the
 image. Press space for next image and escape to quit
 """
 from torch_lib.dataset_posenet import *
-# from torch_lib.posenet_combine import Model, OrientationLoss, FocalLoss
-from torch_lib.posenet import Model, OrientationLoss
+from contrast_experiment.model_qu import Model
 from library.Math import *
-from library.evaluate import rot_error, trans_error, add_err
-from torch_lib.mobilenetv3_old import MobileNetV3_Large
 from collections import OrderedDict
+import torch.nn.functional as F
 
 import os
 import cv2
@@ -21,20 +19,51 @@ from torch.autograd import Variable
 from torchvision.models import vgg, resnet, mobilenet
 import numpy as np
 
-# 获取mobilenetv_3的预训练模型参数。去掉'module'
-def model_dict():
-        model = torch.load("/home/lab/Desktop/wzndeep/posenet-build--eular/torch_lib/mbv3_large.old.pth.tar", map_location='cpu')
-        weight = model["state_dict"]
-        new_state_dict = OrderedDict()
-        for k,v in weight.items():
-            name = k[7:]
-            new_state_dict[name] = v
-        return new_state_dict
+def quat_to_euler(q, is_degree=False):
+    w, x, y, z = q[0], q[1], q[2], q[3]
+
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = np.arctan2(t0, t1)
+
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = np.arcsin(t2)
+
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    # yaw = np.arctan2(t3, t4)
+    yaw = 0.0
+
+    if is_degree:
+        roll = np.rad2deg(roll)
+        pitch = np.rad2deg(pitch)
+        # yaw = np.rad2deg(yaw)
+        yaw = 0.0
+
+    return np.array([roll, pitch, yaw])
+
+def rot_err_arccos(gt_rot, est_rot):
+
+    ans = np.dot(gt_rot, est_rot)
+
+    rot_err_arccos = np.rad2deg(2 * math.acos(np.abs(ans)))
+
+    return rot_err_arccos
+
+
+def rot_err_single(gt_rot, est_rot):
+    ori_out_euler = quat_to_euler(est_rot)
+    ori_true_euler = quat_to_euler(gt_rot)
+
+    rot_err_single = np.abs(ori_true_euler - ori_out_euler)
+    return rot_err_single
 
 
 def main():
 
-    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/weights/'
+    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/contrast_experiment/weight/'
     model_lst = [x for x in sorted(
         os.listdir(weights_path)) if x.endswith('.pkl')]
     if len(model_lst) == 0:
@@ -59,8 +88,6 @@ def main():
 
     all_images = dataset.all_objects()
 
-    trans_errors_norm = []
-    trans_errors_single = []
     rot_errors_arccos = []
     rot_errors_single = []
     adds = []
@@ -85,47 +112,23 @@ def main():
             input_tensor[0, :, :, :] = input_img
             input_tensor.cuda()
 
-            [orient_patch, conf_patch, orient_yaw,
-                conf_yaw] = model(input_tensor)
-            orient_patch = orient_patch.cpu().data.numpy()[0, :, :]
-            conf_patch = conf_patch.cpu().data.numpy()[0, :]
-            orient_yaw = orient_yaw.cpu().data.numpy()[0, :, :]
-            conf_yaw = conf_yaw.cpu().data.numpy()[0, :]
+            ori_out = model(input_tensor)
 
-            argmax_patch = np.argmax(conf_patch)
-            orient_patch = orient_patch[argmax_patch, :]
-            cos = orient_patch[0]
-            sin = orient_patch[1]
-            patch = np.arctan2(sin, cos)
-            patch += dataset.angle_bins[argmax_patch]
+            ori_out = F.normalize(ori_out, p=2, dim=1)
+            ori_out = ori_out.squeeze(0).detach().cpu().numpy()
 
-            argmax_yaw = np.argmax(conf_yaw)
-            orient_yaw = orient_yaw[argmax_yaw, :]
-            cos_yaw = orient_yaw[0]
-            sin_yaw = orient_yaw[1]
-            yaw = np.arctan2(sin_yaw, cos_yaw)
-            yaw += dataset.angle_bins[argmax_yaw]
-            if (yaw > (2 * np.pi)):
-                yaw -= (2 * np.pi)
-            # yaw -= np.pi
+            gt_rot = label['Qu']
 
-            roll = 0.
+            # 四元数的反余弦距离
+            rot_errors_arccos.append(rot_err_arccos(gt_rot, ori_out))
+            # 单独方向的误差
+            rot_errors_single.append(rot_err_single(gt_rot, ori_out))
 
-            r_x = label['Patch']
-            r_y = label['Yaw']
-            r_z = label['Roll']
 
-            gt_rot = np.array([r_x, r_y, r_z])
-            est_rot = np.array([patch, yaw, roll])
-
-            rot_errors = rot_error(gt_rot, est_rot)
-            rot_errors_arccos.append(rot_errors[0])
-            rot_errors_single.append(rot_errors[1])
-
-        print('Estimated patch|Truth patch: {:.3f}/{:.3f}'.format(
-            patch, r_x))
-        print(
-            'Estimated yaw|Truth yaw: {:.3f}/{:.3f}'.format(yaw, r_y))
+        # print('Estimated patch|Truth patch: {:.3f}/{:.3f}'.format(
+        #     patch, r_x))
+        # print(
+        #     'Estimated yaw|Truth yaw: {:.3f}/{:.3f}'.format(yaw, r_y))
 
     mean_rot_error_arccos = np.mean(rot_errors_arccos)
     mean_rot_error_single = np.mean(rot_errors_single, axis=0)

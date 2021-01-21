@@ -4,8 +4,7 @@ but will still use the neural nets to get the 3D position and plot onto the
 image. Press space for next image and escape to quit
 """
 from torch_lib.dataset_posenet import *
-# from torch_lib.posenet_combine import Model, OrientationLoss, FocalLoss
-from torch_lib.posenet import Model, OrientationLoss
+from contrast_experiment.model_six import Model
 from library.Math import *
 from library.evaluate import rot_error, trans_error, add_err
 from torch_lib.mobilenetv3_old import MobileNetV3_Large
@@ -34,7 +33,7 @@ def model_dict():
 
 def main():
 
-    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/weights/'
+    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/contrast_experiment/weights/'
     model_lst = [x for x in sorted(
         os.listdir(weights_path)) if x.endswith('.pkl')]
     if len(model_lst) == 0:
@@ -85,29 +84,18 @@ def main():
             input_tensor[0, :, :, :] = input_img
             input_tensor.cuda()
 
-            [orient_patch, conf_patch, orient_yaw,
-                conf_yaw] = model(input_tensor)
-            orient_patch = orient_patch.cpu().data.numpy()[0, :, :]
-            conf_patch = conf_patch.cpu().data.numpy()[0, :]
-            orient_yaw = orient_yaw.cpu().data.numpy()[0, :, :]
-            conf_yaw = conf_yaw.cpu().data.numpy()[0, :]
+            rotation = model(input_tensor)
+            rotation = rotation.cpu().data.numpy()
+            print(rotation)
 
-            argmax_patch = np.argmax(conf_patch)
-            orient_patch = orient_patch[argmax_patch, :]
-            cos = orient_patch[0]
-            sin = orient_patch[1]
-            patch = np.arctan2(sin, cos)
-            patch += dataset.angle_bins[argmax_patch]
-
-            argmax_yaw = np.argmax(conf_yaw)
-            orient_yaw = orient_yaw[argmax_yaw, :]
-            cos_yaw = orient_yaw[0]
-            sin_yaw = orient_yaw[1]
-            yaw = np.arctan2(sin_yaw, cos_yaw)
-            yaw += dataset.angle_bins[argmax_yaw]
-            if (yaw > (2 * np.pi)):
-                yaw -= (2 * np.pi)
-            # yaw -= np.pi
+            patch_sin = rotation[0][0]
+            patch_cos = rotation[0][1]
+            yaw_sin = rotation[0][2]
+            yaw_cos = rotation[0][3]
+            patch = np.arctan2(patch_sin, patch_cos)
+            yaw = np.arctan2(yaw_sin, yaw_cos)
+            if yaw >= 1.57:
+                yaw -= 1.57
 
             roll = 0.
 

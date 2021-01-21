@@ -149,24 +149,6 @@ class Dataset(data.Dataset):
 
         return q
 
-    def translation(rotation_x, rotation_y, T):
-        R_x = np.array([[1, 0, 0],
-                        [0, +np.cos(rotation_x), -np.sin(rotation_x)],
-                        [0, +np.sin(rotation_x), +np.cos(rotation_x)]],
-                       dtype=np.float32)
-        R_y = np.array([[+np.cos(rotation_y), 0, +np.sin(rotation_y)],
-                        [0, 1, 0],
-                        [-np.sin(rotation_y), 0, +np.cos(rotation_y)]],
-                       dtype=np.float32)
-
-        R = np.dot(R_x, R_y)
-
-        T = T
-
-        loc, error, rank, s = np.linalg.lstsq(R, T, rcond=None)
-
-        return loc
-
     def format_label(self, line):
         line = line[:-1].split(' ')
 
@@ -175,11 +157,24 @@ class Dataset(data.Dataset):
         for i in range(1, len(line)):
             line[i] = float(line[i])
 
-        # Alpha = line[3] # what we will be regressing
+        # 原始标签的角度
         Patch = line[14]
         Yaw = line[15]
         Roll = line[16]
 
+        # 2dbbox
+        top_left = (int(round(line[4])), int(round(line[5])))
+        bottom_right = (int(round(line[6])), int(round(line[7])))
+        Box_2D = [top_left, bottom_right]
+
+        # 尺寸信息
+        Dimension = np.array([line[8], line[9], line[10]],
+                             dtype=np.double)
+        # 偏移
+        Location = [line[11], line[12], line[13]]  # x, y, z
+        Location = np.array(Location, dtype=np.float32)
+
+        # 调整yaw的角度
         if Yaw < 0:
             Yaw += 2 * np.pi
 
@@ -193,36 +188,37 @@ class Dataset(data.Dataset):
             Yaw = Yaw - (3 * np.pi / 2)
         else:
             Yaw = 0
+        
+        # yaw角度不调整
+        # Eular_six = np.array([np.sin(line[14]), np.cos(
+        #     line[14]), np.sin(line[15]), np.cos(line[15])])
+        # 欧拉角
+        # Rotation = [Patch, line[15], Roll]
+        # Qu = self.eulerAnglesToQu(Rotation)
+        # rotation = np.array(Rotation, dtype=np.float32)
 
-        top_left = (int(round(line[4])), int(round(line[5])))
-        bottom_right = (int(round(line[6])), int(round(line[7])))
-        Box_2D = [top_left, bottom_right]
-
-        Dimension = np.array([line[8], line[9], line[10]],
-                             dtype=np.double)  # height, width, length
-
-        Location = [line[11], line[12], line[13]]  # x, y, z
-        Location = np.array(Location, dtype=np.float32)
-        # bring the KITTI center up to the middle of the object
-        # Location[1] -= Dimension[0] / 2
-
+        # yaw角度调整
+        # 六欧拉角
+        Eular_six = np.array([np.sin(line[14]), np.cos(
+            line[14]), np.sin(Yaw), np.cos(Yaw)])
+        # # 欧拉角
         Rotation = [Patch, Yaw, Roll]
         Qu = self.eulerAnglesToQu(Rotation)
+        rotation = np.array(Rotation, dtype=np.float32)
 
+        # 分类方法
         # patch
         Orientation_patch = np.zeros((self.bins, 2))
         Confidence_patch = np.zeros(self.bins)
         # yaw
         Orientation_yaw = np.zeros((self.bins, 2))
         Confidence_yaw = np.zeros(self.bins)
-
-        # alpha is [-pi..pi], shift it to be [0..2pi]
-        # angle = Yaw + np.pi
+ 
         angle_patch = Patch
+        # 角度调整
         angle_yaw = Yaw
-        # angle = Patch + np.pi
-        # patch is [0..pi/2]
-        # angle = Patch
+        # 角度不调整
+        # angle_yaw = line[15]
 
         bin_idxs_patch = self.get_bin(angle_patch)
 
@@ -247,13 +243,15 @@ class Dataset(data.Dataset):
             'Box_2D': Box_2D,
             'Dimensions': Dimension,
             'Location': Location,
+            'Rotation':rotation,
             'Patch': Patch,
             'Yaw': Yaw,
             'Orientation_patch': Orientation_patch,
             'Confidence_patch': Confidence_patch,
             'Orientation_yaw': Orientation_yaw,
             'Confidence_yaw': Confidence_yaw,
-            'Qu':Qu
+            'Qu':Qu,
+            'Eular_six': Eular_six
         }
 
         return label
@@ -272,14 +270,12 @@ class Dataset(data.Dataset):
                 for i in range(1, len(line)):
                     line[i] = float(line[i])
 
-                Alpha = line[3]  # what we will be regressing
                 Patch = line[14]
                 Yaw = line[15]
                 Roll = line[16]
 
                 if Yaw < 0:
                     Yaw += 2 * np.pi
-
                 if Yaw >= 0 and Yaw < (np.pi / 2):
                     Yaw = Yaw
                 elif Yaw >= (np.pi / 2) and Yaw < np.pi:
@@ -298,18 +294,25 @@ class Dataset(data.Dataset):
                 # height, width, length
                 Dimension = [line[8], line[9], line[10]]
                 Location = [line[11], line[12], line[13]]  # x, y, z
-                # bring the KITTI center up to the middle of the object
-                # Location[1] -= Dimension[0] / 2
 
+                # yaw角度不调整
+                # 欧拉角
+                # Rotation = [Patch, line[15], Roll]
+                # Qu = self.eulerAnglesToQu(Rotation)
+                # rotation = np.array(Rotation, dtype=np.float32)
+
+                # yaw角度调整
+                # 欧拉角
                 Rotation = [Patch, Yaw, Roll]
                 Qu = self.eulerAnglesToQu(Rotation)
+                rotation = np.array(Rotation, dtype=np.float32)
 
                 buf.append({
                     'Class': Class,
                     'Box_2D': Box_2D,
                     'Dimensions': Dimension,
                     'Location': Location,
-                    'Alpha': Alpha,
+                    'Rotation': rotation,
                     'Yaw': Yaw,
                     'Patch': Patch,
                     'Roll': Roll,

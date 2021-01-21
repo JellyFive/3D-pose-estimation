@@ -1,5 +1,5 @@
 from torch_lib.dataset_posenet import *
-from contrast_experiment.model_qu import Model
+from contrast_experiment.model_euler import Model
 
 
 import torch
@@ -23,11 +23,7 @@ def main():
     # hyper parameters
     epochs = 200
     batch_size = 8
-    num_epochs_decay = 50
-    sx = 0
-    sq = 1
-    lr = 0.0001
-    learn_beta = True
+
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -44,7 +40,7 @@ def main():
     print('---------------')
 
     base_model = mobilenet.mobilenet_v2(pretrained=True)  # 加载模型并设置为预训练模式
-    model = Model(features=base_model, fixed_weight=True).cuda()
+    model = Model(features=base_model).cuda()
 
 
     # criterion = PoseLoss(device, sq, learn_beta).to(device)
@@ -52,11 +48,9 @@ def main():
     criterion = nn.MSELoss().cuda()
 
     optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
-    scheduler = lr_scheduler.StepLR(
-        optimizer, step_size=num_epochs_decay, gamma=0.1)
 
     # load any previous weights
-    model_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/contrast_experiment/weight/'
+    model_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/weights/'
     latest_model = None
     first_epoch = 0
     if not os.path.isdir(model_path):
@@ -86,21 +80,18 @@ def main():
     total_num_batches = int(len(dataset) / batch_size)
 
     writer = SummaryWriter(
-        '/home/lab/Desktop/wzndeep/posenet-build--eular/contrast_experiment/run')
+        '/home/lab/Desktop/wzndeep/posenet-build--eular/runs')
 
     for epoch in range(first_epoch+1, epochs+1):  # 多批次循环
         curr_batch = 0
         passes = 0
         for local_batch, local_labels in generator:  # 获取输入数据
 
-            ori_true = local_labels['Qu'].float().cuda()
+            ori_true = local_labels['Rotation'].float().cuda()
 
             local_batch = local_batch.float().cuda()
             # pos_out, ori_out = model(local_batch)
             ori_out = model(local_batch)
-
-            ori_out = F.normalize(ori_out, p=2, dim=1)
-            ori_true = F.normalize(ori_true, p=2, dim=1)
 
             loss = criterion(ori_out, ori_true)
 

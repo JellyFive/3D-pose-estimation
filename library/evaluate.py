@@ -30,7 +30,7 @@ def trans_error(gt_trans, est_trans):
     """
     # L2范式，平方和
     trans_err_norm = np.linalg.norm(gt_trans - est_trans)
-    # 绝对值
+    # 单个绝对值
     trans_err_single = np.abs(gt_trans - est_trans)
 
     return trans_err_norm, trans_err_single
@@ -67,7 +67,11 @@ def rot_error(gt_rot, est_rot):
 
     ans = np.dot(gt_quat, est_quat.T)
 
-    return np.rad2deg(2 * math.acos(np.abs(ans)))
+    rot_err_arccos = np.rad2deg(2 * math.acos(np.abs(ans)))
+
+    rot_err_single = np.abs(gt_rot - est_rot)
+
+    return rot_err_arccos, rot_err_single
 
     # 与上述等价
     # gt_quat = Quaternion(eulerAnglesToQu(gt_rot))
@@ -95,7 +99,8 @@ def add_err(dim, gt_trans, est_trans, gt_rot, est_rot):
 if __name__ == "__main__":
     trans_errors_norm = []
     trans_errors_single = []
-    rot_errors = []
+    rot_errors_arccos = []
+    rot_errors_single = []
     adds = []
 
     gt_bbox = np.array([120, 200, 400, 700])
@@ -108,22 +113,31 @@ if __name__ == "__main__":
 
     gt_rot = np.array([0.5237, -0.5237, 0])
     est_rot = np.array([0.5237, -0.5537, 0])
+    gt_rot_deg = np.rad2deg(0.5237)
+
 
     if iou(gt_bbox, est_bbox) >= 0.5:
 
-        trans_error = trans_error(gt_trans, est_trans)
-        trans_errors_norm.append(trans_error[0])
-        trans_errors_single.append(trans_error[1])
-        rot_errors.append(rot_error(gt_rot, est_rot))
+        trans_errors = trans_error(gt_trans, est_trans)
+        trans_errors_norm.append(trans_errors[0])
+        trans_errors_single.append(trans_errors[1])
+        rot_errors = rot_error(gt_rot, est_rot)
+        rot_errors_arccos.append(rot_errors[0])
+        rot_errors_single.append(rot_errors[1])
+
         adds.append(add_err(dim, gt_trans, est_trans, gt_rot, est_rot))
 
     mean_trans_error_norm = np.mean(trans_errors_norm)
     mean_trans_error_single = np.mean(trans_errors_single, axis=0)
-    mean_rot_error = np.mean(rot_errors)
+    mean_rot_error_arccos = np.mean(rot_errors_arccos)
+    mean_rot_error_single = np.mean(rot_errors_single, axis=0)
     mean_add = np.mean(adds)
 
     
-    print("\tMean Rotation Error: {:.3f}".format(mean_rot_error))
+    print("\tMean Rotation Error Norm: {:.3f}".format(mean_rot_error_arccos))
+    print("\tMean Rotation Errors: patch: {:.3f}, yaw: {:.3f}, roll: {:.3f}".format(
+        np.rad2deg(mean_rot_error_single[0]), np.rad2deg(mean_rot_error_single[1]),
+        np.rad2deg(mean_rot_error_single[2])))
     print("\tMean Trans Error Norm: {:.3f}".format(mean_trans_error_norm))
     print("\tMean Trans Errors: X: {:.3f}, Y: {:.3f}, Z: {:.3f}".format(
         mean_trans_error_single[0], mean_trans_error_single[1],
