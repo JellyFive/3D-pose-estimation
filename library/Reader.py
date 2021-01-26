@@ -1,7 +1,5 @@
 import os
 import numpy as np
-import matplotlib as mpl
-mpl.use('QT5Agg')
 
 
 class Reader(object):

@@ -1,5 +1,5 @@
 from torch_lib.dataset_posenet import *
-from torch_lib.posenet_combine import Model, OrientationLoss, FocalLoss
+from contrast_experiment.posenet_combine import Model, OrientationLoss
 
 import torch
 import torch.nn as nn
@@ -19,8 +19,8 @@ def main():
     # hyper parameters
     epochs = 200
     batch_size = 8
-    w = 1
-    alpha = 1
+    w = 10
+    alpha = 100
 
     print("Loading all detected objects in dataset...")
 
@@ -33,9 +33,13 @@ def main():
 
     base_model = mobilenet.mobilenet_v2(pretrained=True)  # 加载模型并设置为预训练模式
     model = Model(features=base_model).cuda()
-    print(model)
 
+    # 选择不同的优化方法
+    opt_Momentum = torch.optim.SGD(model.parameters(), lr = 0.0001, momentum = 0.9)
+      = torch.optim.RMSprop(model.parameters(), lr = 0.0001, alpha = 0.9)
+    opt_Adam = torch.optim.Adam(model.parameters(), lr = 0.0001, betas= (0.9, 0.99))
     opt_SGD = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
+
     conf_loss_func = nn.CrossEntropyLoss().cuda()
     orient_loss_func = OrientationLoss
     criterion = nn.SmoothL1Loss(reduction='mean').cuda()
@@ -59,7 +63,7 @@ def main():
         checkpoint = torch.load(model_path + latest_model)
         # 加载一个state_dict对象，加载模型用于训练或验证
         model.load_state_dict(checkpoint["model_state_dict"])
-        opt_SGD.load_state_dict(checkpoint["optimizer_state_dict"])  # 同上
+        opt_RMSprop.load_state_dict(checkpoint["optimizer_state_dict"])  # 同上
         first_epoch = checkpoint["epoch"]
         loss = checkpoint["loss"]
 
@@ -98,7 +102,7 @@ def main():
             truth_conf_patch = torch.max(truth_conf_patch, dim=1)[1]
             conf_patch_loss = conf_loss_func(conf_patch, truth_conf_patch)
 
-            loss_patch = conf_patch_loss + w * orient_patch_loss
+            loss_patch = w * conf_patch_loss + orient_patch_loss
 
             orient_yaw_loss = orient_loss_func(orient_yaw, truth_orient_yaw,
                                                truth_conf_yaw)
@@ -107,15 +111,15 @@ def main():
             truth_conf_yaw = torch.max(truth_conf_yaw, dim=1)[1]
             conf_yaw_loss = conf_loss_func(conf_yaw, truth_conf_yaw)
 
-            loss_yaw = conf_yaw_loss + w * orient_yaw_loss
+            loss_yaw = w * conf_yaw_loss + orient_yaw_loss
 
             loss_trans = criterion(location, truth_location)
 
-            total_loss = loss_patch + loss_yaw + alpha * loss_trans
+            total_loss = alpha *  ( loss_patch + loss_yaw ) + loss_trans
 
-            opt_SGD.zero_grad()  # 梯度置0
+            opt_RMSprop.zero_grad()  # 梯度置0
             total_loss.backward()  # 反向传播
-            opt_SGD.step()  # 优化
+            opt_RMSprop.step()  # 优化
 
             if passes % 10 == 0:  # 10轮显示一次，打印状态信息
                 print(

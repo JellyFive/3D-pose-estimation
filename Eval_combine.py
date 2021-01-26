@@ -4,11 +4,10 @@ but will still use the neural nets to get the 3D position and plot onto the
 image. Press space for next image and escape to quit
 """
 from torch_lib.dataset_posenet import *
-# from torch_lib.posenet_combine import Model, OrientationLoss, FocalLoss
-from torch_lib.posenet import Model, OrientationLoss
+from contrast_experiment.posenet_combine import Model, OrientationLoss
 from library.Math import *
-from library.evaluate import rot_error, trans_error, add_err
 from library.drawBox import draw
+from library.evaluate import rot_error, trans_error, add_err
 from torch_lib.mobilenetv3_old import MobileNetV3_Large
 from collections import OrderedDict
 
@@ -37,7 +36,7 @@ def model_dict():
 
 def main():
 
-    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/weight/'
+    weights_path = '/home/lab/Desktop/wzndeep/posenet-build--eular/weights/'
     model_lst = [x for x in sorted(
         os.listdir(weights_path)) if x.endswith('.pkl')]
     if len(model_lst) == 0:
@@ -89,11 +88,12 @@ def main():
             input_tensor.cuda()
 
             [orient_patch, conf_patch, orient_yaw,
-                conf_yaw] = model(input_tensor)
+                conf_yaw, est_trans] = model(input_tensor)
             orient_patch = orient_patch.cpu().data.numpy()[0, :, :]
             conf_patch = conf_patch.cpu().data.numpy()[0, :]
             orient_yaw = orient_yaw.cpu().data.numpy()[0, :, :]
             conf_yaw = conf_yaw.cpu().data.numpy()[0, :]
+            est_trans = est_trans.cpu().data.numpy()
 
             argmax_patch = np.argmax(conf_patch)
             orient_patch = orient_patch[argmax_patch, :]
@@ -117,33 +117,46 @@ def main():
             r_x = label['Patch']
             r_y = label['Yaw']
             r_z = label['Roll']
+            gt_trans = label['Location']
 
             gt_rot = np.array([r_x, r_y, r_z])
             est_rot = np.array([patch, yaw, roll])
+
+            trans_errors = trans_error(gt_trans, est_trans)
+            trans_errors_norm.append(trans_errors[0])
+            trans_errors_single.append(trans_errors[1])
 
             rot_errors = rot_error(gt_rot, est_rot)
             rot_errors_arccos.append(rot_errors[0])
             rot_errors_single.append(rot_errors[1])
 
-            # 画图
-            location = label['Location']
             dim = label['Dimensions']
-            bbox = label['Box_2D']
-            draw(image, bbox, cam_to_img, dim, location, location, r_x, r_y, r_z, patch, yaw, roll)
+
+            adds.append(add_err(dim, gt_trans, est_trans, gt_rot, est_rot))
+
+            # 画图
+            # dim = label['Dimensions']
+            # bbox = label['Box_2D']
+            # draw(image, bbox, cam_to_img, dim, gt_trans, est_trans, r_x, r_y, r_z, patch, yaw, roll)
 
         print('Estimated patch|Truth patch: {:.3f}/{:.3f}'.format(
             patch, r_x))
         print(
-            'Estimated yaw|Truth yaw: {:.3f}/{:.3f}'.format(yaw, r_y))
+            'Estimated loction', est_trans)
+        print(
+            'Truth loction', gt_trans)
+        print('----------')
 
         # plt.show()
-        plt.savefig(
-            '/home/lab/Desktop/wzndeep/posenet-build--eular/output/{}_proj'.format(key))
+        # plt.savefig(
+        #     '/home/lab/Desktop/wzndeep/posenet-build--eular/model_26/{}_proj'.format(key))
         # plt.close()
 
     mean_rot_error_arccos = np.mean(rot_errors_arccos)
     mean_rot_error_single = np.mean(rot_errors_single, axis=0)
-    # mean_add = np.mean(adds)
+    mean_trans_error_norm = np.mean(trans_errors_norm)
+    mean_trans_error_single = np.mean(trans_errors_single, axis=0)
+    mean_add = np.mean(adds)
 
     print('=' * 50)
     print('Got %s poses in %.3f seconds\n' %
@@ -152,7 +165,11 @@ def main():
     print("\tMean Rotation Errors: patch: {:.3f}, yaw: {:.3f}, roll: {:.3f}".format(
         np.rad2deg(mean_rot_error_single[0]), np.rad2deg(mean_rot_error_single[1]),
         np.rad2deg(mean_rot_error_single[2])))
-    # print("\tMean ADD: {:.3f}".format(mean_add))
+    print("\tMean Trans Error Norm: {:.3f}".format(mean_trans_error_norm))
+    print("\tMean Trans Errors: X: {:.3f}, Y: {:.3f}, Z: {:.3f}".format(
+        mean_trans_error_single[0][0], mean_trans_error_single[0][1],
+        mean_trans_error_single[0][2]))
+    print("\tMean ADD: {:.3f}".format(mean_add))
 
 
 if __name__ == '__main__':

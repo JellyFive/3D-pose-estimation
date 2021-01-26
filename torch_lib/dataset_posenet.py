@@ -294,6 +294,7 @@ class Dataset(data.Dataset):
                 # height, width, length
                 Dimension = [line[8], line[9], line[10]]
                 Location = [line[11], line[12], line[13]]  # x, y, z
+                Location = np.array(Location, dtype=np.float32)
 
                 # yaw角度不调整
                 # 欧拉角
